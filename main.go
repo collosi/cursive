@@ -16,10 +16,10 @@ var (
 	fInputComment          = flag.String("ic", "", "input beginning of line comment character")
 	fInputFieldsPerLine    = flag.Int("in", -1, "input expected number of fields per line (-1 is any)")
 	fInputLazyQuotes       = flag.Bool("iq", false, "input allow 'lazy' quotes")
-	fInputTrailingComma    = flag.Bool("il", false, "input allow trailing (last) comma")
+	fInputTrailingComma    = flag.Bool("il", true, "input allow trailing (last) comma")
 	fInputTrimLeadingSpace = flag.Bool("it", false, "input trim leading space")
 
-	fOutputSeparator = flag.String("os", ",", "input separator")
+	fOutputSeparator = flag.String("os", ",", "output separator")
 	fOutputCRLF      = flag.Bool("oc", false, "output using CRLF as line ending")
 
 	fIgnoreHeader  = flag.Int("h", 0, "number of header lines to ignore")
@@ -34,10 +34,11 @@ type replacement struct {
 }
 
 var usage = func() {
-	fmt.Fprintf(os.Stderr, "usage: %s [options] <input>* <output>\n", os.Args[0])
+	fmt.Fprintf(os.Stderr, "usage: %s [options] [[ <input> ] <output> ]\n", os.Args[0])
 	flag.PrintDefaults()
 	fmt.Fprintf(os.Stderr, "  -rN=<regexp>: regular expression to replace in field N\n")
 	fmt.Fprintf(os.Stderr, "  -wN=<replacement>: replacement for field N, where $X denotes submatch\n")
+	fmt.Fprintf(os.Stderr, DESCRIPTION)
 	os.Exit(1)
 }
 
@@ -172,7 +173,9 @@ func createOrFindReplacer(flag string, replacements *[]replacement) (*replacemen
 
 func convertRecord(record []string, replacements []replacement) {
 	for _, r := range replacements {
+		println(len(record), r.field)
 		if len(record) > r.field {
+			println("replacing", r.field, record[r.field], r.res, r.with)
 			record[r.field] = r.re.ReplaceAllString(record[r.field], r.with)
 		}
 	}
@@ -202,3 +205,36 @@ func getIO(args []string) (input io.ReadCloser, output io.WriteCloser, err error
 	}
 	return
 }
+
+const DESCRIPTION = `
+Cursive is a utility for reading and writing "separated value" formats like
+CSV and TSV.
+
+INPUT AND OUTPUT
+If neither input nor output are specified on the command line, Cursive will
+read from standard in and write to standard out.  If just an output file is
+specified, Cursive will read from standard in and write to the file.  The
+special value "-" may be used to specify output to standard out, in the case
+that input from a file, and output to standard out is required.
+
+REPLACEMENT
+
+Cursive can do a "find-and-replace" operation on specific columns in the
+input.  The special flags "-rN" and "-wN" can be used to match a regular
+expression in the N'th column and replace it with an arbitrary expression.
+The regular expression supports RE2 matching language with group capture.
+Column numbers start at 0.
+
+Group capture is designated in the regular expression with parenthesis,
+and in the replacement expression with "$X", where X is a number starting
+from 1.  The special replacement expression "$0" represents the entire
+matched expression.
+
+For example, to remove all single digits at the beginning of values in 
+the first column you would.
+
+  cursive -r0="^\d(.*)" -w="$1" input.csv output.csv
+
+The regular expression language supported by cursive is re2. Documentation
+can be found here: https://code.google.com/p/re2/wiki/Syntax
+`
