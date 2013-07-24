@@ -173,9 +173,7 @@ func createOrFindReplacer(flag string, replacements *[]replacement) (*replacemen
 
 func convertRecord(record []string, replacements []replacement) {
 	for _, r := range replacements {
-		println(len(record), r.field)
 		if len(record) > r.field {
-			println("replacing", r.field, record[r.field], r.res, r.with)
 			record[r.field] = r.re.ReplaceAllString(record[r.field], r.with)
 		}
 	}
@@ -233,7 +231,7 @@ matched expression.
 For example, to remove all single digits at the beginning of values in 
 the first column you would.
 
-  cursive -r0="^\d(.*)" -w="$1" input.csv output.csv
+  cursive -r0="^\d(.*)" -w0="$1" input.csv output.csv
 
 The regular expression language supported by cursive is re2. Documentation
 can be found here: https://code.google.com/p/re2/wiki/Syntax
