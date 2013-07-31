@@ -19,8 +19,9 @@ var (
 	fInputTrailingComma    = flag.Bool("il", true, "input allow trailing (last) comma")
 	fInputTrimLeadingSpace = flag.Bool("it", false, "input trim leading space")
 
-	fOutputSeparator = flag.String("os", ",", "output separator")
-	fOutputCRLF      = flag.Bool("oc", false, "output using CRLF as line ending")
+	fOutputSeparator   = flag.String("os", ",", "output separator")
+	fOutputCRLF        = flag.Bool("oc", false, "output using CRLF as line ending")
+	fOutputFieldRanges = flag.String("of", "", "fields to output as comma-separated list of ranges or individual fields")
 
 	fIgnoreHeader  = flag.Int("h", 0, "number of header lines to ignore")
 	fIgnoreTrailer = flag.Int("t", 0, "number of trailer lines to ignore")
@@ -31,6 +32,11 @@ type replacement struct {
 	res   string
 	re    *regexp.Regexp
 	with  string
+}
+
+type fieldRange struct {
+	start int
+	end   int
 }
 
 var usage = func() {
@@ -57,6 +63,8 @@ func main() {
 	ignore := *fIgnoreHeader
 	footerBuffer := make([][]string, *fIgnoreTrailer)
 	footerBufferLocation := 0
+
+	fieldRanges, err := parseFieldRanges(*fOutputFieldRanges)
 	for err == nil {
 		var record []string
 		record, err = reader.Read()
@@ -72,13 +80,13 @@ func main() {
 		}
 		if *fIgnoreTrailer > 0 {
 			if footerBuffer[footerBufferLocation] != nil {
-				err = writer.Write(footerBuffer[footerBufferLocation])
+				err = writeFields(writer, fieldRanges, footerBuffer[footerBufferLocation])
 			}
 			footerBuffer[footerBufferLocation] = record
 			footerBufferLocation++
 			footerBufferLocation = footerBufferLocation % (*fIgnoreTrailer)
 		} else {
-			err = writer.Write(record)
+			err = writeFields(writer, fieldRanges, record)
 		}
 	}
 	writer.Flush()
@@ -88,6 +96,25 @@ func main() {
 	}
 }
 
+func writeFields(w *csv.Writer, fieldRanges []*fieldRange, record []string) error {
+	if fieldRanges == nil {
+		return w.Write(record)
+	}
+	wrecord := make([]string, 0, len(record))
+	for _, r := range fieldRanges {
+		if r.start >= len(record) {
+			return fmt.Errorf("%d: no such field in record of length %d", r.start, len(record))
+		}
+		if r.end < 0 {
+			wrecord = append(wrecord, record[r.start])
+		} else {
+			for i := r.start; i <= r.end; i++ {
+				wrecord = append(wrecord, record[i])
+			}
+		}
+	}
+	return w.Write(wrecord)
+}
 func getReader(r io.Reader) *csv.Reader {
 	csvr := csv.NewReader(r)
 	if len(*fInputSeparator) > 0 {
@@ -204,16 +231,60 @@ func getIO(args []string) (input io.ReadCloser, output io.WriteCloser, err error
 	return
 }
 
+func parseFieldRanges(ranges string) ([]*fieldRange, error) {
+	if ranges == "" {
+		return nil, nil
+	}
+	splits := strings.Split(ranges, ",")
+	var frs []*fieldRange
+	for _, r := range splits {
+		fr, err := parseFieldRange(r)
+		if err != nil {
+			return nil, err
+		}
+		frs = append(frs, fr)
+	}
+	return frs, nil
+}
+
+func parseFieldRange(str string) (*fieldRange, error) {
+	splits := strings.SplitN(str, "-", 2)
+	i, err := strconv.ParseInt(splits[0], 10, 32)
+	if err != nil {
+		return nil, err
+	}
+	if len(splits) == 1 {
+		return &fieldRange{start: int(i), end: -1}, nil
+	}
+	i2, err := strconv.ParseInt(splits[1], 10, 32)
+	if err != nil {
+		return nil, err
+	}
+	return &fieldRange{start: int(i), end: int(i2)}, nil
+}
+
 const DESCRIPTION = `
 Cursive is a utility for reading and writing "separated value" formats like
 CSV and TSV.
 
 INPUT AND OUTPUT
+
 If neither input nor output are specified on the command line, Cursive will
 read from standard in and write to standard out.  If just an output file is
 specified, Cursive will read from standard in and write to the file.  The
 special value "-" may be used to specify output to standard out, in the case
 that input from a file, and output to standard out is required.
+
+The "-of" flag allows the user to specify a subset of the input fields
+for output, as a comma-separated list of field ranges.  Field ranges can
+be either a single field number, or a start field and end field separated by
+a hypen.  For example, to output the first five
+fields and the "tenth" field:
+
+  cursive -of="0-4,10" input.csv output.csv
+
+Field number start at 0, and so the field labelled "10" in the example
+above is actually the 11th field.
 
 REPLACEMENT
 
@@ -229,7 +300,7 @@ from 1.  The special replacement expression "$0" represents the entire
 matched expression.
 
 For example, to remove all single digits at the beginning of values in 
-the first column you would.
+the first column you would use
 
   cursive -r0="^\d(.*)" -w0="$1" input.csv output.csv
 
