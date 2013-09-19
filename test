@@ -1,0 +1,10 @@
+#!/bin/bash
+
+set -e
+
+cd tests
+for t in `ls`; do
+    echo -n $t
+    ./$t
+    echo " ... PASSED"
+done

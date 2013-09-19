@@ -1,0 +1,22 @@
+#!/bin/bash
+
+# test remove empty, without header
+
+set -e
+
+output=$(mktemp)
+expected=$(mktemp)
+
+../csvcut/csvcut -c=3 -d -l -h << 'EOF' > $output
+ALABAMA,AL,SMALL
+ALASKA,AK,BIG
+ARIZONA,AZ,
+EOF
+
+cat << 'EOF' > $expected
+N,C3
+1,SMALL
+2,BIG
+EOF
+
+cmp $output $expected

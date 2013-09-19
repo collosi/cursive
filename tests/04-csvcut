@@ -1,0 +1,24 @@
+#!/bin/bash
+
+# test line numbering, with header
+
+set -e
+
+output=$(mktemp)
+expected=$(mktemp)
+
+../csvcut/csvcut -c=1 -l << 'EOF' > $output
+State Name,State Abbreviate,Code,Montgomery GI Bill-Active Duty,Montgomery GI Bill- Selective Reserve,Dependents' Educational Assistance,Reserve Educational Assistance Program,Post-Vietnam Era Veteran's Educational Assistance Program,TOTAL,
+ALABAMA,AL,01,"6,718","1,728","2,703","1,269",8,"12,426",
+ALASKA,AK,02,776,154,166,60,2,"1,158",
+ARIZONA,AZ,04,"26,822","2,005","3,137","2,011",11,"33,986",
+EOF
+
+cat << 'EOF' > $expected
+N,State Name
+1,ALABAMA
+2,ALASKA
+3,ARIZONA
+EOF
+
+cmp $output $expected

@@ -1,0 +1,23 @@
+#!/bin/bash
+
+# test line numbering, without header, zero indexed
+
+set -e
+
+output=$(mktemp)
+expected=$(mktemp)
+
+../csvcut/csvcut -c=1 -l -h -z << 'EOF' > $output
+ALABAMA,AL,01,"6,718","1,728","2,703","1,269",8,"12,426",
+ALASKA,AK,02,776,154,166,60,2,"1,158",
+ARIZONA,AZ,04,"26,822","2,005","3,137","2,011",11,"33,986",
+EOF
+
+cat << 'EOF' > $expected
+N,C1
+0,ALABAMA
+1,ALASKA
+2,ARIZONA
+EOF
+
+cmp $output $expected

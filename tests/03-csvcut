@@ -1,0 +1,24 @@
+#!/bin/bash
+
+# test output of header names, ignoring first two lines
+
+set -e
+
+output=$(mktemp)
+expected=$(mktemp)
+
+../csvcut/csvcut -c=2,3 << 'EOF' > $output
+State Name,State Abbreviate,Code,Montgomery GI Bill-Active Duty,Montgomery GI Bill- Selective Reserve,Dependents' Educational Assistance,Reserve Educational Assistance Program,Post-Vietnam Era Veteran's Educational Assistance Program,TOTAL,
+ALABAMA,AL,01,"6,718","1,728","2,703","1,269",8,"12,426",
+ALASKA,AK,02,776,154,166,60,2,"1,158",
+ARIZONA,AZ,04,"26,822","2,005","3,137","2,011",11,"33,986",
+EOF
+
+cat << 'EOF' > $expected
+State Abbreviate,Code
+AL,01
+AK,02
+AZ,04
+EOF
+
+cmp $output $expected
