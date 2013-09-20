@@ -1,0 +1,35 @@
+#!/bin/bash
+
+# Test two-column sort without header
+
+set -e
+
+output=$(mktemp)
+expected=$(mktemp)
+
+../csvsort/csvsort -c=2,1 -h << 'EOF' > $output
+A,B
+C,B
+B,B
+C,A
+A,A
+B,A
+C,C
+A,C
+B,C
+EOF
+
+cat << 'EOF' > $expected
+C1,C2
+A,A
+B,A
+C,A
+A,B
+B,B
+C,B
+A,C
+B,C
+C,C
+EOF
+
+cmp $output $expected

@@ -1,0 +1,35 @@
+#!/bin/bash
+
+# test string and numeric sort
+
+set -e
+
+output=$(mktemp)
+expected=$(mktemp)
+
+../csvsort/csvsort -c=2,3n -h << 'EOF' > $output
+A,B,3
+C,B,020.1
+B,B,1
+C,A,9
+A,A,898
+B,A,24
+C,C,-7
+A,C,-9
+B,C,0
+EOF
+
+cat << 'EOF' > $expected
+C1,C2,C3
+C,A,9
+B,A,24
+A,A,898
+B,B,1
+A,B,3
+C,B,020.1
+A,C,-9
+C,C,-7
+B,C,0
+EOF
+
+cmp $output $expected

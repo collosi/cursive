@@ -7,13 +7,13 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"strconv"
 )
 
 type RecordFunc func(record []string, buffer []string, isHeader bool, lineNo int) ([]string, error)
 
 type CSVProcessor struct {
-	ProcessFunc           RecordFunc
 	InputSeparator        string
 	InputTabSeparator     bool
 	InputComment          string
@@ -32,7 +32,6 @@ type CSVProcessor struct {
 	LineNumbers     bool
 	ZeroBased       bool
 	Columns         string
-	DeleteEmpty     bool
 
 	input  io.Reader
 	output io.Writer
@@ -56,11 +55,6 @@ func (proc *CSVProcessor) OpenIO(args []string) error {
 		proc.output, err = os.Open(proc.OutputFile)
 	}
 
-	return err
-}
-
-func (proc *CSVProcessor) Process() error {
-	var err error
 	ignore := proc.IgnoreBeginning
 	if ignore > 0 {
 		buffered := bufio.NewReader(proc.input)
@@ -77,6 +71,85 @@ func (proc *CSVProcessor) Process() error {
 		}
 		proc.input = buffered
 	}
+
+	return err
+}
+
+type CSVCompareFunc func(r1 []string, r2 []string) bool
+
+type sortableCSV struct {
+	less   CSVCompareFunc
+	values [][]string
+}
+
+func (scsv *sortableCSV) Len() int {
+	return len(scsv.values)
+}
+
+func (scsv *sortableCSV) Less(i, j int) bool {
+	return scsv.less(scsv.values[i], scsv.values[j])
+}
+
+func (scsv *sortableCSV) Swap(i, j int) {
+	scsv.values[i], scsv.values[j] = scsv.values[j], scsv.values[i]
+}
+
+func (proc *CSVProcessor) Sort(f CSVCompareFunc, reverse bool) error {
+	reader := proc.getReader()
+	writer := proc.getWriter()
+
+	c, err := reader.ReadAll()
+	if err != nil {
+		return err
+	}
+	if proc.IgnoreEnd > 0 {
+		if len(c) < proc.IgnoreEnd {
+			return errors.New("entire file was ignored because of value of 'ignore end'")
+		}
+		c = c[:len(c)-proc.IgnoreEnd]
+	}
+	sortRef := c
+	if !proc.NoHeader {
+		sortRef = sortRef[1:]
+	}
+	var sortInterface sort.Interface = &sortableCSV{f, sortRef}
+	if reverse {
+		sortInterface = sort.Reverse(sortInterface)
+	}
+	sort.Sort(sortInterface)
+	if proc.NoHeader && len(c) > 0 {
+		header := make([]string, 0, len(c[0])+1)
+		if proc.LineNumbers {
+			header = append(header, "N")
+		}
+		header = append(header, createHeaderRecord(len(c[0]))...)
+		err = writer.Write(header)
+		if err != nil {
+			return err
+		}
+	}
+	if proc.LineNumbers {
+		offset := 1
+		if proc.ZeroBased {
+			offset = 0
+		}
+		for i, line := range c {
+			expanded := make([]string, 0, len(line)+1)
+			expanded = append(expanded, strconv.Itoa(i+offset))
+			expanded = append(expanded, line...)
+			err = writer.Write(expanded)
+			if err != nil {
+				return err
+			}
+		}
+	} else {
+		return writer.WriteAll(c)
+	}
+	return nil
+}
+
+func (proc *CSVProcessor) Process(processFunc RecordFunc, deleteEmpty bool) error {
+	var err error
 
 	reader := proc.getReader()
 	writer := proc.getWriter()
@@ -104,7 +177,7 @@ func (proc *CSVProcessor) Process() error {
 			if proc.LineNumbers {
 				buffer = append(buffer, first)
 			}
-			outputRecord, err = proc.ProcessFunc(createHeaderRecord(len(record)), buffer, true, line)
+			outputRecord, err = processFunc(createHeaderRecord(len(record)), buffer, true, line)
 			if err != nil {
 				break
 			}
@@ -122,7 +195,7 @@ func (proc *CSVProcessor) Process() error {
 			}
 			buffer = append(buffer, first)
 		}
-		outputRecord, err = proc.ProcessFunc(record, buffer, (!proc.NoHeader) && isFirst, line)
+		outputRecord, err = processFunc(record, buffer, (!proc.NoHeader) && isFirst, line)
 		if err != nil {
 			break
 		}
@@ -131,13 +204,13 @@ func (proc *CSVProcessor) Process() error {
 			if footerBuffer[footerBufferLocation] != nil {
 				err = writer.Write(footerBuffer[footerBufferLocation])
 			}
-			if !proc.DeleteEmpty || !isEmptyRecord(outputRecord, proc.LineNumbers) {
+			if !deleteEmpty || !isEmptyRecord(outputRecord, proc.LineNumbers) {
 				footerBuffer[footerBufferLocation] = outputRecord
 				footerBufferLocation++
 				footerBufferLocation = footerBufferLocation % (proc.IgnoreEnd)
 			}
 		} else {
-			if !proc.DeleteEmpty || !isEmptyRecord(outputRecord, proc.LineNumbers) {
+			if !deleteEmpty || !isEmptyRecord(outputRecord, proc.LineNumbers) {
 				err = writer.Write(outputRecord)
 			}
 		}

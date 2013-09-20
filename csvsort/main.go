@@ -4,9 +4,8 @@ import (
 	"flag"
 	"fmt"
 	"github.com/laslowh/cursive/common"
-	"io"
-	"math"
 	"os"
+	"strconv"
 )
 
 var (
@@ -29,7 +28,7 @@ var (
 	fZeroBased       = flag.Bool("z", false, "when interpreting or displaying column numbers, use zero-based numbering")
 	fNames           = flag.Bool("n", false, "display column names and indices from the input and exit")
 	fColumns         = flag.String("c", "", "a comma-separated list of column indices or ranges to be extracted; default is all columns")
-	fDeleteEmpty     = flag.Bool("d", false, "after cutting, delete rows which are completely empty")
+	fReverse         = flag.Bool("r", false, "reverse sort order")
 )
 
 var usage = func() {
@@ -53,22 +52,8 @@ func main() {
 		fmt.Fprintf(os.Stderr, "%v: error parsing columns\n", err)
 		os.Exit(1)
 	}
-	//TODO:
-	if len(fieldRanges)
-
-	procFunc := func(record []string, buffer []string, isHeader bool, lineNo int) ([]string, error) {
-		return processRecord(fieldRanges, record, buffer, isHeader, lineNo)
-	}
-	if *fNames {
-		if *fNoHeader {
-			fmt.Fprintf(os.Stderr, "-n and -h are incompatible")
-			os.Exit(1)
-		}
-		procFunc = func(record []string, buffer []string, isHeader bool, line int) ([]string, error) {
-			printNames(os.Stdout, record)
-			os.Exit(0)
-			return nil, nil
-		}
+	if len(fieldRanges) == 0 {
+		fieldRanges = append(fieldRanges, &common.FieldRange{0, -1, 's'})
 	}
 
 	proc := common.CSVProcessor{
@@ -98,39 +83,80 @@ func main() {
 		os.Exit(1)
 	}
 
-	err = proc.Process(procFunc, *fDeleteEmpty)
+	err = proc.Sort(createSortFunc(fieldRanges), *fReverse)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}
 }
 
-func processRecord(fieldRanges []*common.FieldRange, record []string, buffer []string, isHeader bool, line int) ([]string, error) {
-	if fieldRanges == nil {
-		return append(buffer, record...), nil
-	}
-
-	for _, r := range fieldRanges {
-		if r.Start >= len(record) {
-			return nil, fmt.Errorf("%d: no such field in record of length %d", r.Start, len(record))
+func cmp(a, b string, flag byte) int {
+	switch flag {
+	case 'n':
+		f1, err1 := strconv.ParseFloat(a, 64)
+		f2, err2 := strconv.ParseFloat(b, 64)
+		if err1 != nil && err2 != nil {
+			goto strcmp
 		}
-		if r.End < 0 {
-			buffer = append(buffer, record[r.Start])
-		} else {
-			for i := r.Start; i <= r.End; i++ {
-				buffer = append(buffer, record[i])
-			}
+		if err1 != nil {
+			return -1
 		}
+		if err2 != nil {
+			return 1
+		}
+		switch {
+		case f1 < f2:
+			return -1
+		case f2 < f1:
+			return 1
+		default:
+			return 0
+		}
+	default:
 	}
-	return buffer, nil
+strcmp:
+	min := len(b)
+	if len(a) < len(b) {
+		min = len(a)
+	}
+	diff := 0
+	for i := 0; i < min && diff == 0; i++ {
+		diff = int(a[i]) - int(b[i])
+	}
+	if diff == 0 {
+		diff = len(a) - len(b)
+	}
+	return diff
+	return 0
 }
 
-func printNames(output io.Writer, ns []string) {
-	n := len(ns)
-	nchars := int(math.Ceil(math.Log10(float64(n+1)))) + 1
-	format := fmt.Sprintf("%% %dd: %%s\n", nchars)
-	for i, n := range ns {
-		fmt.Fprintf(output, format, i+1, n)
+func createSortFunc(ranges []*common.FieldRange) common.CSVCompareFunc {
+	return func(r1 []string, r2 []string) bool {
+		for _, r := range ranges {
+			if r.End < 0 {
+				c := cmp(r1[r.Start], r2[r.Start], r.Flag)
+				switch {
+				case c < 0:
+					return true
+				case c == 0:
+					// continue
+				case c > 0:
+					return false
+				}
+			}
+			for i := r.Start; i <= r.End; i++ {
+				c := cmp(r1[i], r2[i], r.Flag)
+				switch {
+				case c < 0:
+					return true
+				case c == 0:
+					// continue
+				case c > 0:
+					return false
+				}
+			}
+		}
+		return false
 	}
 }
 
