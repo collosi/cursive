@@ -74,7 +74,6 @@ func main() {
 		NoHeader:        *fNoHeader,
 		LineNumbers:     *fLineNumbers,
 		ZeroBased:       *fZeroBased,
-		Columns:         *fColumns,
 	}
 
 	err = proc.OpenIO(flag.Args())

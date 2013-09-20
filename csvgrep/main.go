@@ -1,10 +1,9 @@
 package main
 
 import (
-	"encoding/csv"
 	"flag"
 	"fmt"
-	"io"
+	"github.com/laslowh/cursive/common"
 	"os"
 	"regexp"
 	"strconv"
@@ -13,36 +12,37 @@ import (
 
 var (
 	fInputSeparator        = flag.String("is", ",", "input separator")
+	fInputTabSeparator     = flag.Bool("its", false, "input separator is the tab character (overrides -is)")
 	fInputComment          = flag.String("ic", "", "input beginning of line comment character")
 	fInputFieldsPerLine    = flag.Int("in", -1, "input expected number of fields per line (-1 is any)")
 	fInputLazyQuotes       = flag.Bool("iq", false, "input allow 'lazy' quotes")
 	fInputTrailingComma    = flag.Bool("il", true, "input allow trailing (last) comma")
 	fInputTrimLeadingSpace = flag.Bool("it", false, "input trim leading space")
 
-	fOutputSeparator   = flag.String("os", ",", "output separator")
-	fOutputCRLF        = flag.Bool("oc", false, "output using CRLF as line ending")
-	fOutputFieldRanges = flag.String("of", "", "fields to output as comma-separated list of ranges or individual fields")
+	fOutputFile      = flag.String("o", "", "output file; defaults to stdout")
+	fOutputSeparator = flag.String("os", "", "output separator; defaults to input separator")
+	fOutputCRLF      = flag.Bool("oc", false, "output using CRLF as line ending")
 
-	fIgnoreHeader  = flag.Int("h", 0, "number of header lines to ignore")
-	fIgnoreTrailer = flag.Int("t", 0, "number of trailer lines to ignore")
+	fIgnoreBeginning = flag.Int("bi", 0, "number of lines to ignore at beginning of file")
+	fIgnoreEnd       = flag.Int("ei", 0, "number of lines to ignore at end of file")
+	fNoHeader        = flag.Bool("h", false, "no header row, will create default headers")
+
+	fFilterMode   = flag.Bool("f", true, "filter non matching rows")
+	fInvertFilter = flag.Bool("v", false, "invert filter (filter matching rows)")
 )
 
 type replacement struct {
-	field int
-	res   string
-	re    *regexp.Regexp
-	with  string
-}
-
-type fieldRange struct {
-	start int
-	end   int
+	field     int
+	res       string
+	re        *regexp.Regexp
+	isReplace bool
+	with      string
 }
 
 var usage = func() {
 	fmt.Fprintf(os.Stderr, "usage: %s [options] [[ <input> ] <output> ]\n", os.Args[0])
 	flag.PrintDefaults()
-	fmt.Fprintf(os.Stderr, "  -rN=<regexp>: regular expression to replace in field N\n")
+	fmt.Fprintf(os.Stderr, "  -rN=<regexp>: regular expression to match in field N\n")
 	fmt.Fprintf(os.Stderr, "  -wN=<replacement>: replacement for field N, where $X denotes submatch\n")
 	fmt.Fprintf(os.Stderr, DESCRIPTION)
 	os.Exit(1)
@@ -57,88 +57,68 @@ func main() {
 	flag.Usage = usage
 	flag.Parse()
 
-	input, output, err := getIO(flag.Args())
-	reader := getReader(input)
-	writer := getWriter(output)
-	ignore := *fIgnoreHeader
-	footerBuffer := make([][]string, *fIgnoreTrailer)
-	footerBufferLocation := 0
-
-	fieldRanges, err := parseFieldRanges(*fOutputFieldRanges)
-	for err == nil {
-		var record []string
-		record, err = reader.Read()
-		if err != nil {
-			break
-		}
-		if ignore > 0 {
-			ignore--
-			continue
-		}
-		if len(replacements) > 0 {
-			convertRecord(record, replacements)
-		}
-		if *fIgnoreTrailer > 0 {
-			if footerBuffer[footerBufferLocation] != nil {
-				err = writeFields(writer, fieldRanges, footerBuffer[footerBufferLocation])
-			}
-			footerBuffer[footerBufferLocation] = record
-			footerBufferLocation++
-			footerBufferLocation = footerBufferLocation % (*fIgnoreTrailer)
-		} else {
-			err = writeFields(writer, fieldRanges, record)
-		}
+	if *fInputTabSeparator {
+		*fInputSeparator = "\t"
 	}
-	writer.Flush()
-	if err != io.EOF {
+	if *fOutputSeparator == "" {
+		*fOutputSeparator = *fInputSeparator
+	}
+
+	procFunc := func(record []string, buffer []string, isHeader bool, lineNo int) ([]string, error) {
+		return processRecord(replacements, record, buffer, isHeader, lineNo, *fFilterMode, *fInvertFilter)
+	}
+
+	proc := common.CSVProcessor{
+		InputSeparator:        *fInputSeparator,
+		InputTabSeparator:     *fInputTabSeparator,
+		InputComment:          *fInputComment,
+		InputFieldsPerLine:    *fInputFieldsPerLine,
+		InputLazyQuotes:       *fInputLazyQuotes,
+		InputTrailingComma:    *fInputTrailingComma,
+		InputTrimLeadingSpace: *fInputTrimLeadingSpace,
+
+		OutputFile:      *fOutputFile,
+		OutputSeparator: *fOutputSeparator,
+		OutputCRLF:      *fOutputCRLF,
+
+		IgnoreBeginning: *fIgnoreBeginning,
+		IgnoreEnd:       *fIgnoreEnd,
+		NoHeader:        *fNoHeader,
+	}
+
+	err = proc.OpenIO(flag.Args())
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%v: error opening file\n", err)
+		os.Exit(1)
+	}
+
+	err = proc.Process(procFunc, false)
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}
 }
 
-func writeFields(w *csv.Writer, fieldRanges []*fieldRange, record []string) error {
-	if fieldRanges == nil {
-		return w.Write(record)
+func processRecord(replacements []replacement, record []string, buffer []string, isheader bool, lineNo int, filterMode, invert bool) ([]string, error) {
+	buflen := len(buffer)
+	buffer = append(buffer, record...)
+	record = buffer[buflen:]
+	if replacements == nil || len(replacements) == 0 || isheader {
+		return buffer, nil
 	}
-	wrecord := make([]string, 0, len(record))
-	for _, r := range fieldRanges {
-		if r.start >= len(record) {
-			return fmt.Errorf("%d: no such field in record of length %d", r.start, len(record))
-		}
-		if r.end < 0 {
-			wrecord = append(wrecord, record[r.start])
-		} else {
-			for i := r.start; i <= r.end; i++ {
-				wrecord = append(wrecord, record[i])
-			}
-		}
-	}
-	return w.Write(wrecord)
-}
-func getReader(r io.Reader) *csv.Reader {
-	csvr := csv.NewReader(r)
-	if len(*fInputSeparator) > 0 {
-		csvr.Comma = rune((*fInputSeparator)[0])
-	}
-	if len(*fInputComment) > 0 {
-		csvr.Comment = rune((*fInputComment)[0])
-	}
-	csvr.FieldsPerRecord = *fInputFieldsPerLine
-	csvr.LazyQuotes = *fInputLazyQuotes
-	csvr.TrailingComma = *fInputTrailingComma
-	csvr.TrimLeadingSpace = *fInputTrimLeadingSpace
-	return csvr
-}
 
-func getWriter(w io.Writer) *csv.Writer {
-	csvw := csv.NewWriter(w)
-	if len(*fOutputSeparator) > 0 {
-		csvw.Comma = rune((*fOutputSeparator)[0])
+	for _, r := range replacements {
+		if r.field < 0 || r.field >= len(record) {
+			return nil, fmt.Errorf("%d: no such field in record of length %d", r.field, len(record))
+		}
+		if filterMode && r.re.MatchString(record[r.field]) == invert {
+			return nil, nil
+		}
+		if r.isReplace {
+			record[r.field] = r.re.ReplaceAllString(record[r.field], r.with)
+		}
 	}
-	if *fOutputCRLF {
-		csvw.UseCRLF = *fOutputCRLF
-	}
-	return csvw
+	return buffer, nil
 }
 
 func preparseFlags() ([]replacement, error) {
@@ -160,6 +140,7 @@ func preparseFlags() ([]replacement, error) {
 			if err != nil {
 				return nil, err
 			}
+			r.isReplace = true
 			r.with = value
 		} else if !strings.HasPrefix(a, "-") {
 			newArgs = append(newArgs, args[i:]...)
@@ -189,6 +170,7 @@ func createOrFindReplacer(flag string, replacements *[]replacement) (*replacemen
 	if err != nil {
 		return nil, "", err
 	}
+	field -= 1
 	for i, r := range *replacements {
 		if r.field == int(field) {
 			return &((*replacements)[i]), value, nil
@@ -196,71 +178,6 @@ func createOrFindReplacer(flag string, replacements *[]replacement) (*replacemen
 	}
 	*replacements = append(*replacements, replacement{field: int(field)})
 	return &((*replacements)[len(*replacements)-1]), value, nil
-}
-
-func convertRecord(record []string, replacements []replacement) {
-	for _, r := range replacements {
-		if len(record) > r.field {
-			record[r.field] = r.re.ReplaceAllString(record[r.field], r.with)
-		}
-	}
-}
-
-func getIO(args []string) (input io.ReadCloser, output io.WriteCloser, err error) {
-	input = os.Stdin
-	output = os.Stdout
-	switch len(args) {
-	case 0:
-		return
-	case 1:
-		if args[0] == "-" {
-			return
-		}
-		// read from stdin, write to file
-		output, err = os.Create(args[0])
-	case 2:
-		// read from stdin, write to file
-		input, err = os.Open(args[0])
-		if err != nil {
-			return
-		}
-		output, err = os.Create(args[1])
-	default:
-		usage()
-	}
-	return
-}
-
-func parseFieldRanges(ranges string) ([]*fieldRange, error) {
-	if ranges == "" {
-		return nil, nil
-	}
-	splits := strings.Split(ranges, ",")
-	var frs []*fieldRange
-	for _, r := range splits {
-		fr, err := parseFieldRange(r)
-		if err != nil {
-			return nil, err
-		}
-		frs = append(frs, fr)
-	}
-	return frs, nil
-}
-
-func parseFieldRange(str string) (*fieldRange, error) {
-	splits := strings.SplitN(str, "-", 2)
-	i, err := strconv.ParseInt(splits[0], 10, 32)
-	if err != nil {
-		return nil, err
-	}
-	if len(splits) == 1 {
-		return &fieldRange{start: int(i), end: -1}, nil
-	}
-	i2, err := strconv.ParseInt(splits[1], 10, 32)
-	if err != nil {
-		return nil, err
-	}
-	return &fieldRange{start: int(i), end: int(i2)}, nil
 }
 
 const DESCRIPTION = `

@@ -31,7 +31,6 @@ type CSVProcessor struct {
 	NoHeader        bool
 	LineNumbers     bool
 	ZeroBased       bool
-	Columns         string
 
 	input  io.Reader
 	output io.Writer
@@ -181,7 +180,9 @@ func (proc *CSVProcessor) Process(processFunc RecordFunc, deleteEmpty bool) erro
 			if err != nil {
 				break
 			}
-			err = writer.Write(outputRecord)
+			if outputRecord != nil {
+				err = writer.Write(outputRecord)
+			}
 			if err != nil {
 				break
 			}
@@ -202,7 +203,10 @@ func (proc *CSVProcessor) Process(processFunc RecordFunc, deleteEmpty bool) erro
 
 		if proc.IgnoreEnd > 0 {
 			if footerBuffer[footerBufferLocation] != nil {
-				err = writer.Write(footerBuffer[footerBufferLocation])
+				record := footerBuffer[footerBufferLocation]
+				if record != nil {
+					err = writer.Write(record)
+				}
 			}
 			if !deleteEmpty || !isEmptyRecord(outputRecord, proc.LineNumbers) {
 				footerBuffer[footerBufferLocation] = outputRecord
@@ -211,7 +215,9 @@ func (proc *CSVProcessor) Process(processFunc RecordFunc, deleteEmpty bool) erro
 			}
 		} else {
 			if !deleteEmpty || !isEmptyRecord(outputRecord, proc.LineNumbers) {
-				err = writer.Write(outputRecord)
+				if outputRecord != nil {
+					err = writer.Write(outputRecord)
+				}
 			}
 		}
 		if err != nil {

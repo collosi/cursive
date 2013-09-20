@@ -1,0 +1,24 @@
+#!/bin/bash
+
+# test select last column
+
+set -e
+
+output=$(mktemp)
+expected=$(mktemp)
+
+../csvcut/csvcut -c=2 << 'EOF' > $output
+State Name,State Abbreviate
+ALABAMA,AL
+ALASKA,AK
+ARIZONA,AZ
+EOF
+
+cat << 'EOF' > $expected
+State Abbreviate
+AL
+AK
+AZ
+EOF
+
+cmp $output $expected

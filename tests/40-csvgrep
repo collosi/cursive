@@ -1,0 +1,23 @@
+#!/bin/bash
+
+# test regex match
+
+set -e
+
+output=$(mktemp)
+expected=$(mktemp)
+
+../csvgrep/csvgrep -r10="([0-9]+)/([0-9]+)/([0-9]+)" << 'EOF' > $output
+State Name,State Abbreviate,Code,Montgomery GI Bill-Active Duty,Montgomery GI Bill- Selective Reserve,Dependents' Educational Assistance,Reserve Educational Assistance Program,Post-Vietnam Era Veteran's Educational Assistance Program,TOTAL,Date
+ALABAMA,AL,01,"6,718","1,728","2,703","1,269",8,"12,426","08/21/2012"
+ALASKA,AK,02,776,154,166,60,2,"1,158","01/14/2012"
+ARIZONA,AZ,04,"26,822","2,005","3,137","2,011",11,"33,986",None
+EOF
+
+cat << 'EOF' > $expected
+State Name,State Abbreviate,Code,Montgomery GI Bill-Active Duty,Montgomery GI Bill- Selective Reserve,Dependents' Educational Assistance,Reserve Educational Assistance Program,Post-Vietnam Era Veteran's Educational Assistance Program,TOTAL,Date
+ALABAMA,AL,01,"6,718","1,728","2,703","1,269",8,"12,426",08/21/2012
+ALASKA,AK,02,776,154,166,60,2,"1,158",01/14/2012
+EOF
+
+cmp $output $expected

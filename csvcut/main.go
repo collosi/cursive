@@ -53,8 +53,6 @@ func main() {
 		fmt.Fprintf(os.Stderr, "%v: error parsing columns\n", err)
 		os.Exit(1)
 	}
-	//TODO:
-	if len(fieldRanges)
 
 	procFunc := func(record []string, buffer []string, isHeader bool, lineNo int) ([]string, error) {
 		return processRecord(fieldRanges, record, buffer, isHeader, lineNo)
@@ -89,7 +87,6 @@ func main() {
 		NoHeader:        *fNoHeader,
 		LineNumbers:     *fLineNumbers,
 		ZeroBased:       *fZeroBased,
-		Columns:         *fColumns,
 	}
 
 	err = proc.OpenIO(flag.Args())
@@ -106,12 +103,12 @@ func main() {
 }
 
 func processRecord(fieldRanges []*common.FieldRange, record []string, buffer []string, isHeader bool, line int) ([]string, error) {
-	if fieldRanges == nil {
+	if fieldRanges == nil || len(fieldRanges) == 0 {
 		return append(buffer, record...), nil
 	}
 
 	for _, r := range fieldRanges {
-		if r.Start >= len(record) {
+		if r.Start < 0 || r.Start >= len(record) {
 			return nil, fmt.Errorf("%d: no such field in record of length %d", r.Start, len(record))
 		}
 		if r.End < 0 {
