@@ -19,7 +19,6 @@ type CSVProcessor struct {
 	InputComment          string
 	InputFieldsPerLine    int
 	InputLazyQuotes       bool
-	InputTrailingComma    bool
 	InputTrimLeadingSpace bool
 
 	OutputFile      string
@@ -243,7 +242,6 @@ func (proc *CSVProcessor) getReader() *csv.Reader {
 	}
 	csvr.FieldsPerRecord = proc.InputFieldsPerLine
 	csvr.LazyQuotes = proc.InputLazyQuotes
-	csvr.TrailingComma = proc.InputTrailingComma
 	csvr.TrimLeadingSpace = proc.InputTrimLeadingSpace
 	return csvr
 }

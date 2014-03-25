@@ -1,6 +1,7 @@
 package common
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 )
@@ -40,6 +41,9 @@ func parseFieldRange(str string) (*FieldRange, error) {
 	i, err := strconv.ParseInt(splits[0], 10, 32)
 	if err != nil {
 		return nil, err
+	}
+	if i <= 0 {
+		return nil, fmt.Errorf("%d: field specifiers must be greater than 0", i)
 	}
 	if len(splits) == 1 {
 		return &FieldRange{Start: int(i) - 1, End: -1, Flag: flag}, nil

@@ -6,6 +6,7 @@ import (
 	"github.com/laslowh/cursive/common"
 	"os"
 	"strconv"
+	"strings"
 )
 
 var (
@@ -14,7 +15,6 @@ var (
 	fInputComment          = flag.String("ic", "", "input beginning of line comment character")
 	fInputFieldsPerLine    = flag.Int("in", -1, "input expected number of fields per line (-1 is any)")
 	fInputLazyQuotes       = flag.Bool("iq", false, "input allow 'lazy' quotes")
-	fInputTrailingComma    = flag.Bool("il", true, "input allow trailing (last) comma")
 	fInputTrimLeadingSpace = flag.Bool("it", false, "input trim leading space")
 
 	fOutputFile      = flag.String("o", "", "output file; defaults to stdout")
@@ -27,12 +27,12 @@ var (
 	fLineNumbers     = flag.Bool("l", false, "insert a column of line numbers at the front of the output")
 	fZeroBased       = flag.Bool("z", false, "when interpreting or displaying column numbers, use zero-based numbering")
 	fNames           = flag.Bool("n", false, "display column names and indices from the input and exit")
-	fColumns         = flag.String("c", "", "a comma-separated list of column indices or ranges to be extracted; default is all columns")
+	fColumns         = flag.String("c", "", "a comma-separated list of column indices or ranges to be used for sort ordering; default is all columns")
 	fReverse         = flag.Bool("r", false, "reverse sort order")
 )
 
 var usage = func() {
-	fmt.Fprintf(os.Stderr, "usage: %s [options] [[ <input> ] <output> ]\n", os.Args[0])
+	fmt.Fprintf(os.Stderr, "usage: %s [options] [ <input> ]\n", os.Args[0])
 	flag.PrintDefaults()
 	fmt.Fprintf(os.Stderr, DESCRIPTION)
 	os.Exit(1)
@@ -62,7 +62,6 @@ func main() {
 		InputComment:          *fInputComment,
 		InputFieldsPerLine:    *fInputFieldsPerLine,
 		InputLazyQuotes:       *fInputLazyQuotes,
-		InputTrailingComma:    *fInputTrailingComma,
 		InputTrimLeadingSpace: *fInputTrimLeadingSpace,
 
 		OutputFile:      *fOutputFile,
@@ -92,8 +91,8 @@ func main() {
 func cmp(a, b string, flag byte) int {
 	switch flag {
 	case 'n':
-		f1, err1 := strconv.ParseFloat(a, 64)
-		f2, err2 := strconv.ParseFloat(b, 64)
+		f1, err1 := strconv.ParseFloat(strings.TrimSpace(a), 64)
+		f2, err2 := strconv.ParseFloat(strings.TrimSpace(b), 64)
 		if err1 != nil && err2 != nil {
 			goto strcmp
 		}
@@ -160,18 +159,37 @@ func createSortFunc(ranges []*common.FieldRange) common.CSVCompareFunc {
 }
 
 const DESCRIPTION = `
-Filter and truncate CSV files. Like unix "cut" command, but for tabular data.
+csvsort - sort lines of CSV files by field
+
+csvsort is part of the Cursive toolkit, and is analogous to the Unix 'sort'
+command.  Cursive is a set of utilities for reading and writing "separated
+value" formats like CSV and TSV.
+
+Typical usage of csvsort would read from a CSV file, sort on a specific field,
+and output the sorted lines.  For example,
+
+  csvsort -c=3 input.csv
+
+would sort the data in input.csv by field three.  Note that by default, csvsort
+assumes that there is a header row that is passed through unaltered.
 
 INPUT AND OUTPUT
 
-If neither input nor output are specified on the command line, Cursive will
-read from standard in and write to standard out.  If just an output file is
-specified, Cursive will read from standard in and write to the file.
+If <input> is not specified on the command line, csvsort will read from
+standard in.   If no "-o" flag is provided, csvsort will write to standard
+out.
 
 The "-c" flag allows the user to specify a subset of the input fields
-for output, as a comma-separated list of field ranges.  Field ranges can
-be either a single field number, or a start field and end field separated by
-a hypen.  For example, to output the first five
+for sorting, as a comma-separated list of field ranges.  Sort will be performed
+in lexocographic order based on these output columns.
+
+  cursive -c="4,5n"
+
+will sort first by the fourth column, then by the fifth.  An "n" may be added
+to a columns number to specify a numeric sort.
+
+Field ranges can be either a single field number, or a start field and end 
+field separated by a hypen.  For example, to sort by the first five
 fields and the "tenth" field:
 
   cursive -c="1-4,10" input.csv

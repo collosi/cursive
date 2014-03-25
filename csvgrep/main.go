@@ -16,7 +16,6 @@ var (
 	fInputComment          = flag.String("ic", "", "input beginning of line comment character")
 	fInputFieldsPerLine    = flag.Int("in", -1, "input expected number of fields per line (-1 is any)")
 	fInputLazyQuotes       = flag.Bool("iq", false, "input allow 'lazy' quotes")
-	fInputTrailingComma    = flag.Bool("il", true, "input allow trailing (last) comma")
 	fInputTrimLeadingSpace = flag.Bool("it", false, "input trim leading space")
 
 	fOutputFile      = flag.String("o", "", "output file; defaults to stdout")
@@ -40,7 +39,7 @@ type replacement struct {
 }
 
 var usage = func() {
-	fmt.Fprintf(os.Stderr, "usage: %s [options] [[ <input> ] <output> ]\n", os.Args[0])
+	fmt.Fprintf(os.Stderr, "usage: %s [options] [ <input> ]\n", os.Args[0])
 	flag.PrintDefaults()
 	fmt.Fprintf(os.Stderr, "  -rN=<regexp>: regular expression to match in field N\n")
 	fmt.Fprintf(os.Stderr, "  -wN=<replacement>: replacement for field N, where $X denotes submatch\n")
@@ -74,7 +73,6 @@ func main() {
 		InputComment:          *fInputComment,
 		InputFieldsPerLine:    *fInputFieldsPerLine,
 		InputLazyQuotes:       *fInputLazyQuotes,
-		InputTrailingComma:    *fInputTrailingComma,
 		InputTrimLeadingSpace: *fInputTrimLeadingSpace,
 
 		OutputFile:      *fOutputFile,
@@ -181,46 +179,47 @@ func createOrFindReplacer(flag string, replacements *[]replacement) (*replacemen
 }
 
 const DESCRIPTION = `
-Cursive is a utility for reading and writing "separated value" formats like
-CSV and TSV.
+csvgrep - print lines matching a pattern in a field
+
+csvgrep is part of the Cursive toolkit, and is analogous to the Unix 'grep'
+command.   Cursive is a set of utilities for reading and writing "separated
+value" formats like CSV and TSV.  csvgrep allows you to find lines in a file
+that match a value or regular expression in a specific field.
+
+Typical usage reads from standard in, matches a value against a specific field
+and writes to standard out.  For example:
+
+  csvgrep -r2=TOP 
+
+would read from standard in, and find and output all lines that match "TOP" in
+the second field.  The value provided to the "-r2" flag in this case will be
+interpreted as a regular expression, and may be enclosed in double-quotes.
+Note that by default the input is assumed to have a header row that is passed
+through unaltered.
 
 INPUT AND OUTPUT
 
-If neither input nor output are specified on the command line, Cursive will
-read from standard in and write to standard out.  If just an output file is
-specified, Cursive will read from standard in and write to the file.  The
-special value "-" may be used to specify output to standard out, in the case
-that input from a file, and output to standard out is required.
-
-The "-of" flag allows the user to specify a subset of the input fields
-for output, as a comma-separated list of field ranges.  Field ranges can
-be either a single field number, or a start field and end field separated by
-a hypen.  For example, to output the first five
-fields and the "tenth" field:
-
-  cursive -of="0-4,10" input.csv output.csv
-
-Field number start at 0, and so the field labelled "10" in the example
-above is actually the 11th field.
+If <input> is not specified on the command line, csvgrep will read from
+standard in.   If no "-o" flag is provided, csvgrep will write to standard
+out.
 
 REPLACEMENT
 
-Cursive can do a "find-and-replace" operation on specific columns in the
+csvgrep can do a "find-and-replace" operation on specific columns in the
 input.  The special flags "-rN" and "-wN" can be used to match a regular
-expression in the N'th column and replace it with an arbitrary expression.
-The regular expression supports RE2 matching language with group capture.
-Column numbers start at 0.
+expression in the N'th column and replace it with an arbitrary expression. The
+regular expression supports RE2 matching language with group capture. Column
+numbers start at 1.
 
-Group capture is designated in the regular expression with parenthesis,
-and in the replacement expression with "$X", where X is a number starting
-from 1.  The special replacement expression "$0" represents the entire
-matched expression.
+Group capture is designated in the regular expression with parenthesis, and in
+the replacement expression with "$X", where X is a number starting from 1.
+The special replacement expression "$0" represents the entire matched
+expression.
 
-For example, to remove all single digits at the beginning of values in 
-the first column you would use
+For example, to remove all single digits at the beginning of values in  the
+first column you would use
 
-  cursive -r0="^\d(.*)" -w0="$1" input.csv output.csv
+  cursive -r0="^\d(.*)" -w0="$1" input.csv
 
-The regular expression language supported by cursive is re2. Documentation
-can be found here: https://code.google.com/p/re2/wiki/Syntax
-`
+The regular expression language supported by cursive is re2. Documentation can
+be found here: https://code.google.com/p/re2/wiki/Syntax `

@@ -15,7 +15,6 @@ var (
 	fInputComment          = flag.String("ic", "", "input beginning of line comment character")
 	fInputFieldsPerLine    = flag.Int("in", -1, "input expected number of fields per line (-1 is any)")
 	fInputLazyQuotes       = flag.Bool("iq", false, "input allow 'lazy' quotes")
-	fInputTrailingComma    = flag.Bool("il", true, "input allow trailing (last) comma")
 	fInputTrimLeadingSpace = flag.Bool("it", false, "input trim leading space")
 
 	fOutputFile      = flag.String("o", "", "output file; defaults to stdout")
@@ -33,7 +32,7 @@ var (
 )
 
 var usage = func() {
-	fmt.Fprintf(os.Stderr, "usage: %s [options] [[ <input> ] <output> ]\n", os.Args[0])
+	fmt.Fprintf(os.Stderr, "usage: %s [options] [ <input> ]\n", os.Args[0])
 	flag.PrintDefaults()
 	fmt.Fprintf(os.Stderr, DESCRIPTION)
 	os.Exit(1)
@@ -75,7 +74,6 @@ func main() {
 		InputComment:          *fInputComment,
 		InputFieldsPerLine:    *fInputFieldsPerLine,
 		InputLazyQuotes:       *fInputLazyQuotes,
-		InputTrailingComma:    *fInputTrailingComma,
 		InputTrimLeadingSpace: *fInputTrimLeadingSpace,
 
 		OutputFile:      *fOutputFile,
@@ -132,13 +130,20 @@ func printNames(output io.Writer, ns []string) {
 }
 
 const DESCRIPTION = `
-Filter and truncate CSV files. Like unix "cut" command, but for tabular data.
+csvcut - remove sections from each line of CSV files
+
+csvcut is part of the Cursive toolkit, and is analogous to the Unix 'cut'
+command.  Cursive is a set of utilities for reading and writing "separated
+value" formats like CSV and TSV.  
+
+Typical usage is to read a CSV file, and output only a subset of the fields
+present in the original file.
 
 INPUT AND OUTPUT
 
-If neither input nor output are specified on the command line, Cursive will
-read from standard in and write to standard out.  If just an output file is
-specified, Cursive will read from standard in and write to the file.
+If <input> is not specified on the command line, csvgrep will read from
+standard in.   If no "-o" flag is provided, csvgrep will write to standard
+out.
 
 The "-c" flag allows the user to specify a subset of the input fields
 for output, as a comma-separated list of field ranges.  Field ranges can
